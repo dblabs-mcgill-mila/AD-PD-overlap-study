@@ -1,3 +1,8 @@
+"""
+Script to perform gene set enrichment analysis. Examples in run.py as thresh_loadings_and_gsea_*(.., do_gsea=True, ..)
+"""
+
+
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
