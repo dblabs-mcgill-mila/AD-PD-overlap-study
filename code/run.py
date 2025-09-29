@@ -1,3 +1,11 @@
+"""
+MAIN RUN script
+
+Contains examples to run end-to-end analysis. 
+PLS -> Correlation / Gene set enrichment analysis.
+"""
+
+
 import end2endPLS as pls
 import correlation_base as co
 from collections import OrderedDict
