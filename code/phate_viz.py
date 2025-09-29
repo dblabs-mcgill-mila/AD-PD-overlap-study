@@ -1,3 +1,7 @@
+"""
+Script to do PHATE vizulations. Basis for Supplementary Figures.
+"""
+
 import gc
 import sys
 import scanpy as sc
