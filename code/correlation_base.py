@@ -1,3 +1,8 @@
+"""
+Script to perform correlation analyses. Examples in run.py as run_corr_*(...)
+"""
+
+
 import pandas as pd
 
 import matplotlib.pyplot as plt
@@ -22,8 +27,13 @@ plt.rcParams['svg.fonttype'] = 'none'
 
 
 class CorrelationBase(object):
-
+    """
+    Base class for handling correlation analyses between two diseases.
+    """
     def __init__(self, corr_metric, disease1, disease2, disease_name1, disease_name2, path_dir):
+        """
+        Initialize correlation analysis with metric, diseases, and paths.
+        """
         self.corr_metric = corr_metric
         self.disease1 = disease1
         self.disease2 = disease2
@@ -48,6 +58,9 @@ class CorrelationBase(object):
 
     @classmethod
     def read_zip_to_dict(cls, zip_filename):
+        """
+        Read parquet files from a zip archive into a dictionary of DataFrames.
+        """
         dataframes_dict = {}
         with zipfile.ZipFile(zip_filename, 'r') as zip_file:
             for file_name in zip_file.namelist():
@@ -61,6 +74,9 @@ class CorrelationBase(object):
         return dataframes_dict
     
     def get_merged_dfs(self, df_path_1, df_path_2):
+        """
+        Merge DataFrames from two zip archives into a combined DataFrame.
+        """
         df_dict1 = self.__class__.read_zip_to_dict(df_path_1)
         df1_all = pd.DataFrame()
         for celltype, df in df_dict1.items():
@@ -114,10 +130,9 @@ class PLSCorrelationBase(CorrelationBase):
         return merged_df
         
     def _correlations(self, pls_path_1, pls_path_2, corr_path, min_overlaps_genes=15):
-        # try:
-        # print('reading 1')
         merged_all_bs = self.get_merged_dfs(pls_path_1, pls_path_2)
         merged_all_bs[f'cell_comp_{self.var1_name}_{self.var2_name}'] = merged_all_bs[f'cell_comp_{self.var1_name}'].astype(str)+'%' + merged_all_bs[f'cell_comp_{self.var2_name}'].astype(str)
+        
         #Note: if doOR is None, do nothing.
         if self.doOR == True:
             merged_all_bs.drop(merged_all_bs[( abs(merged_all_bs[f'{self.corr_colname}_{self.var1_name}']) <= self.loading_thresh) & (abs(merged_all_bs[f'{self.corr_colname}_{self.var2_name}'])<= self.loading_thresh)].index, inplace = True)
@@ -152,12 +167,13 @@ class PLSCorrelationBase(CorrelationBase):
         raw_corr_df.to_csv(corr_path)
         del(raw_corr_df)
         gc.collect()
-        # except Exception as e:
-        #     print(e)
-        #     print(f'skipping {pls_path_1} {pls_path_2}')
+        
 
 
 class PLSCorrelationTrue(PLSCorrelationBase):
+    """
+    Extension of CorrelationBase for PLS loadings-based correlations.
+    """
 
     @classmethod
     def correlation_path(cls, path_dir, disease1, disease2, disease_name1, disease_name2, corr_metric, seed, doOR, corr_colname):
@@ -225,6 +241,9 @@ class PLSCorrelationTrue(PLSCorrelationBase):
     
 
 class PLSCorrelationPermute(PLSCorrelationBase):
+        """
+        Extension of PLSCorrelationBase to run correlation on permutation based results- permutated correlations.
+        """
 
     @classmethod
     def correlation_path(cls, path_dir, disease1, disease2, disease_name1, disease_name2, perm_idx, seed, corr_metric, doOR, corr_colname):
@@ -365,6 +384,7 @@ class CorrelationUtilsBase(CorrelationBase):
                  palette = None,
                  facecolor = None,
                  ):
+
         norm = norm if norm else (0,-1, 1)
         xlabel = mtx[self.cellcomp_name1()]
         ylabel = mtx[self.cellcomp_name2()]
@@ -466,6 +486,7 @@ class CorrelationUtilsBase(CorrelationBase):
                    palette = None,
                    facecolor = None,
                 ):
+        '''Plot function for correlation heatmap (example Figure. 1a)'''
         if corr_matrix is None:
             corr_path_pre = self.true_corr.correlation_path(self.path_dir, 
                                                             self.disease1, 
@@ -492,7 +513,10 @@ class CorrelationUtilsBase(CorrelationBase):
     
 
 class PLSCorrelationUtils(PLSCorrelation, CorrelationUtilsBase):
-    
+    '''
+    Utils for correlation modules
+    '''
+
     def cellcomp_name1(self):
         if self.is_split:
             return 'cell_comp_'+'_'.join([self.var1_name.rsplit('_',2)[0], self.var1_name.rsplit('_',1)[-1]])
@@ -609,8 +633,12 @@ class PLSCorrelationUtils(PLSCorrelation, CorrelationUtilsBase):
     
 
 class PLSIntraSplitCorrelationUtils(PLSCorrelation, CorrelationUtilsBase):
+    '''Class to calculate correlations between two runs for the same dataset'''
 
     def __init__(self, corr_metric, disease, disease_name, path_dir, num_split = 10, doOR = True, loading_thresh=0):
+        '''
+        The same disease (and dataset) is analyzed for intra-correlation. Split by non-overlapping donors.
+        '''
         self.doOR = doOR
         self.loading_thresh = loading_thresh
         self.corr_utils = [PLSCorrelationUtils(corr_metric, 
@@ -640,7 +668,10 @@ class PLSIntraSplitCorrelationUtils(PLSCorrelation, CorrelationUtilsBase):
     
 
 class PLSInterSplitCorrelationUtils(CorrelationUtilsBase):
-
+    '''
+    Perform correlation on two halves of disease1-disease2 dataset pair. 
+    Analyze correlation strength robustness using 50% subsampled datasets.
+    '''
     def __init__(self, corr_metric, disease1, disease2, disease_name1, disease_name2, path_dir, num_split = 10, doOR = True, loading_thresh=0):
         self.doOR = doOR
         self.loading_thresh = loading_thresh
@@ -695,7 +726,10 @@ class PLSInterSplitCorrelationUtils(CorrelationUtilsBase):
 
 
 class GSEACorrelation(CorrelationBase):
-    
+    '''
+    DEPRECATED
+    Correlation between GSEA terms. Correlation done on basis of presence or absence of term.
+    '''
     def merge_datasets(self, df1, df2):
         components = df1[['Term', 'NES', 'celltype', 'component', 'gene_set_source']]
         components = components.merge(df2[['Term', 'NES', 'celltype', 'component', 'gene_set_source']], 
