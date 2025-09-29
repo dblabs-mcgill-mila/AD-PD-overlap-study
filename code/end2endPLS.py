@@ -1,3 +1,9 @@
+"""
+PLS Discriminant analysis script.
+
+Includes bootstrap and permutation. Examples in run.py as run_pls*(...)
+"""
+
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -77,7 +83,12 @@ class BasePLS(object):
 
 
 class GeneListFromExpressionMtx(BasePLS):
+    '''
+    PLS-DA
+    Fits pls models per cell type for anndata
+    Entry: run()
 
+    '''
     def _do_lr_bootstrap(self, X, y, iter, lr_model, **model_params):
         model = lr_model(**model_params)
         X_bootstrap, y_bootstrap = resample(X, y, replace=True, random_state=iter)
@@ -402,6 +413,37 @@ class GeneListFromExpressionMtx(BasePLS):
             save_fig = False,
             celltypes = None,
             covariate = None):
+            """
+                Run end-to-end PLS with bootstrapping across cell types.
+
+                Parameters
+                ----------
+                adata : AnnData
+                    Annotated single-cell data matrix.
+                n_cells_max : int, optional
+                    Maximum number of cells to consider per cell type (default: None).
+                n_bootstrap : int, default=500
+                    Number of bootstrap iterations.
+                n_jobs : int, default=6
+                    Number of parallel jobs to run.
+                zero_threshold : int, default=5
+                    Minimum gene expression threshold for filtering.
+                N_TOP : int, default=100
+                    Number of top features/components to retain for plotting
+                seed : int, default=42
+                    Random seed for reproducibility.
+                save_fig : bool, default=False
+                    Whether to save diagnostic figures.
+                celltypes : list of str, optional
+                    Subset of cell types to analyze; if None, uses all available under adata.obs.cell_type.
+                covariate : str, optional
+                    Covariate to adjust for during PLS.
+
+                Returns
+                -------
+                None
+                    Results are written to disk at `pls_bs_GE_path`.
+                """
         pls_bs_GE_path = GeneListFromExpressionMtx.pls_bs_GE_path(self.path_dir, 
                                                                   self.disease, 
                                                                   self.disease_name, 
@@ -436,7 +478,9 @@ class GeneListFromExpressionMtx(BasePLS):
 
 
 class PermutationGeneList(GeneListFromExpressionMtx):
-
+    '''
+    Run PLS on label shuffled data
+    '''
     def do_permutations(self,
                         ge_csr_array,
                         ge_obs,
@@ -646,6 +690,8 @@ class PermutationGeneList(GeneListFromExpressionMtx):
 
 
 class ThresholdPredictiveComponents(BasePLS):
+    '''Filter PLS components that do not pass label shuffle permutation test'''
+
     HIGH_PERCENTILE = 95
 
     def __init__(self, disease, celltype_component_optimal, path_dir, disease_name, high_percentile=HIGH_PERCENTILE, low_percentile = None, permute_factor='label'):
@@ -759,7 +805,7 @@ class ThresholdPredictiveComponents(BasePLS):
 
 
 class ThresholdPredictiveWeights(BasePLS):
-
+    '''DEPRECATED'''
     HIGH_PERCENTILE = 95
 
     def __init__(self, disease, celltype_component_optimal, path_dir, disease_name, high_percentile=HIGH_PERCENTILE, low_percentile = None, permute_factor='label'):
