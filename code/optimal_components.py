@@ -1,3 +1,7 @@
+"""
+Script to find optimal number of PLS components based on cross-validation.
+"""
+
 import numpy as np
 import pandas as pd
 import scanpy as sc
