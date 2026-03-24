@@ -26,43 +26,32 @@ def run_mast_analysis(adata, condition_col, covariates=[]):
         Other variables to control for (e.g., ['age', 'sex', 'pmi']).
     """
     
-    # 1. Load the R libraries
     mast = importr('MAST')
     base = importr('base')
     
-    # 2. Pre-calculate Cellular Detection Rate (CDR)
-    # This is standard practice for high-impact snRNA-seq papers to account for dropout.
     print("Calculating Cellular Detection Rate (CDR)...")
     adata.obs['cdr'] = np.asarray((adata.X > 0).sum(axis=1)).flatten() / adata.shape[1]
 
     # Center and scale CDR to help model convergence
     adata.obs['cdr'] = (adata.obs['cdr'] - adata.obs['cdr'].mean()) / adata.obs['cdr'].std()
     
-    # 3. Create a combined converter for Numpy and Pandas
-    # This fixes the NotImplementedError for ndarray and the DeprecationWarning
     combined_converter = robjects.default_converter + pandas2ri.converter + numpy2ri.converter
     
     with localconverter(combined_converter):
-        # 4. Prepare the Expression Matrix (MUST be Genes x Cells)
-        # Transpose AnnData.X (Cells x Genes) to (Genes x Cells)
+        
         if hasattr(adata.X, "toarray"):
             expr_mat = adata.X.T.toarray()
         else:
             expr_mat = adata.X.T
             
-        # 5. Define Metadata Objects
-        # c_data rows must match expr_mat columns (Cells)
         c_data = adata.obs
-        # f_data rows must match expr_mat rows (Genes)
         f_data = pd.DataFrame(index=adata.var_names)
         f_data["primerid"] = adata.var_names
         
         print(f"Creating SingleCellAssay: {expr_mat.shape[0]} genes, {expr_mat.shape[1]} cells")
         
-        # 6. Initialize the MAST object
         sca = mast.FromMatrix(expr_mat, c_data, f_data)
         
-        # 7. Build the R Formula
         formula_str = f"~ {condition_col} + cdr"
         if covariates:
             formula_str += " + " + " + ".join(covariates)
@@ -70,19 +59,17 @@ def run_mast_analysis(adata, condition_col, covariates=[]):
         print(f"Fitting Hurdle Model: {formula_str}")
         f = Formula(formula_str)
         
-        # 8. Run the Zero-Inflated Regression (zlm) and Likelihood Ratio Test
         zlm_fit = mast.zlm(f, sca)
     
     with localconverter(robjects.default_converter):
         summary_r = robjects.r['summary'](zlm_fit, doLRT=condition_col)
-        # summary_r is an R list-like object (ListVector)
         
 
     with localconverter(robjects.default_converter + pandas2ri.converter):
         # -----------------------------
         # 4. Extract hurdle p-values
         # -----------------------------
-        results = robjects.conversion.rpy2py(summary_r.rx2("datatable"))  # R data.table
+        results = robjects.conversion.rpy2py(summary_r.rx2("datatable"))
         hurdle = results[results["component"] == "H"].copy()
 
         hurdle = hurdle[["primerid", "Pr(>Chisq)"]]
