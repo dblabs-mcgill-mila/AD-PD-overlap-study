@@ -1,10 +1,3 @@
-"""
-Clustered bootstrap
-
-Script to perform patient stratified bootstrap analysis.
-"""
-
-
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -52,15 +45,36 @@ from sklearn.utils import resample
 PATH_DIR = run.PATH_DIR
 ADATA_PRE = run.ADATA_PRE
 
+def AD_optimal_map():
+    return OrderedDict({ 
+                'Ex': 6,
+                'Oli': 3,
+                'In': 4,
+                'Mic': 2,
+                'Opc': 2,
+                'Ast': 3,
+                'End': 2,
+                'Per': 2,
+                })
 
-AD_optimal_map = utils.AD_optimal_map
-PD_optimal_map = utils.PD_optimal_map
-PD_Sm_optimal_map = utils.PD_Sm_optimal_map
-AD_Seattle_optimal_map = utils.AD_Seattle_optimal_map
+
+def PD_optimal_map():
+    return OrderedDict({ 
+                'SOX6': 7,
+                'CALB1': 10,
+                'Ependyma': 2,
+                'Microglia': 7,
+                'Macrophage': 3,
+                'Astrocyte': 7,
+                'Endothelial': 8,
+                'OPC': 7,
+                'Excitatory neuron': 10,
+                'Inhibitory neuron': 8,
+                'Oligodendrocyte': 7,
+                })
 
 
 def regress_out(self, X, y, n_bootstrap=1, threshold=95):
-    ''' regress out covariate: PMI'''
     scaler = StandardScaler(copy=False)
     y = scaler.fit_transform(y)
     model_params = {'fit_intercept': True}
@@ -79,10 +93,6 @@ _modelScoreAndParams_bs = namedtuple('ModelScoreAndParams', 'id score')
 
 
 def stratified_resampling(data, target_count, random_state=0):
-    '''
-    Stratified sampling with replacement. 
-    Maintains the donor wise porportion of cells based on diagnosis.
-    '''
     resampled_data = {}
     np.random.seed(random_state)
     for diag in data.diagnosis.unique():
@@ -100,14 +110,6 @@ def stratified_resampling(data, target_count, random_state=0):
 
 
 def clustered_bootstrap(adata, celltype, idx, n_comp, covariate = 'pmi', pca_max = 500, trial = 0):
-    '''
-    Main clustering module.
-    Bootstrap of cells is performed hierarchically 
-    First, a donor set is selected with replacement from the whole pool of donors.
-    Then the cells are sampled based on a second bootstrapping.
-    Cell proportions are maintained for each donor.
-    The validation scores (roc_auc) are calculated on the excluded donor set
-    '''
     try:
         print(f'{celltype} IDX: {idx}')
         data_PD_ = adata[adata.obs['diagnosis'] > 0]
@@ -194,6 +196,7 @@ def clustered_bootstrap(adata, celltype, idx, n_comp, covariate = 'pmi', pca_max
 
         scPLS_optimal = PLSRegression(n_components=n_comp,  scale=False, copy=True)
         scPLS_optimal.fit(X_, y_train)
+        # del(y_train)
         # Transform test set
         X_test_scaled = scaler.transform(X_test)  # Use the scaler fitted on the training set
         if covariate:
@@ -216,18 +219,6 @@ def clustered_bootstrap(adata, celltype, idx, n_comp, covariate = 'pmi', pca_max
 
 
 def doPLSRegression(adata, celltypes, M, optimalMapping, n_jobs=10, n_cells_max = None, covariate = None, pca_max=500, start_idx = 0):
-    '''
-    Module to perform parallelized bootstrap.
-    
-    Parameters:
-
-        adata: anndata
-                Input anndata
-        celltypes: list
-                List of cell types to iterate over. Must be a subset of adata.obs.cell_type
-        M: int
-                Number of bootstrap iterations
-    '''
     model_scores = {} # {cell: [] for cell in celltypes}
     try:
         for cell in  celltypes:
@@ -260,12 +251,6 @@ def doPLSRegression(adata, celltypes, M, optimalMapping, n_jobs=10, n_cells_max 
             score_df = pd.concat([score_df, _df])
         print('SCORES written')
     return model_scores
-
-
-########################################################################################################
-# Example runs
-########################################################################################################
-
 
 
 def run_ros(M=10, covariate='pmi', trn_frac = 0.8, n_cells_max=None, n_jobs=10, pca_max = 10000, start_idx = 0):
@@ -324,7 +309,7 @@ def run_sm(M=10, covariate='pmi', trn_frac = 0.8, n_cells_max=None, n_jobs=10, p
     adata = adata[:, adata.var.index.isin(genes_ros)]
 
     celltypes = run.PD_Sm_optimal_map().keys()
-    celltype_scores = doPLSRegression(adata, celltypes, M=M, optimalMapping = PD_Sm_optimal_map(), n_cells_max= n_cells_max, n_jobs=n_jobs, pca_max=pca_max, start_idx=start_idx)
+    celltype_scores = doPLSRegression(adata, celltypes, M=M, optimalMapping = run.PD_Sm_optimal_map(), n_cells_max= n_cells_max, n_jobs=n_jobs, pca_max=pca_max, start_idx=start_idx)
     score_df = pd.DataFrame()
     for k, vals in celltype_scores.items():
         _df = pd.DataFrame.from_dict(vals)
@@ -335,16 +320,12 @@ def run_sm(M=10, covariate='pmi', trn_frac = 0.8, n_cells_max=None, n_jobs=10, p
     score_df.to_csv(PATH_DIR + f'PD/Sm/score_df_{start_idx}_to_{M}_{covariate}_pca{pca_max}_bs_execid.csv')
 
 
-def run_sea(M=10, covariate='pmi', trn_frac = 0.8, n_cells_max=None, n_jobs=10, pca_max = 10000, start_idx=0):
-    path_dir = PATH_DIR
-
-    adata = sc.read_h5ad(ADATA_PRE+'adata_pp_Nov6_pmi.h5ad')
-
-    celltypes = ['astro', 'endo', 'opc', 'micro', 'oligo', 'l4_it', 'l5_it', 'vip']
-    score_df = pd.DataFrame()
+def run_sea(M=10, covariate='pmi', trn_frac = 0.8, subsample_frac = None, n_cells_max= 40000, n_jobs=10, pca_max = 10000, start_idx=0):
+    celltypes = ['astro', 'endo', 'opc', 'micro', 'oligo', 'l4_it', 'l5_it', 'vip', 'pvalb', 'sncg', 'sst']
 
     genesym_path = PATH_DIR+'ensemble2HGNC.csv'
     genesym_map = pd.read_csv(genesym_path, index_col=0)
+
     def get_hgnc_sym(x):
         res = genesym_map[genesym_map['Ensemble_ID']==x]['HGNC_symbol'].values
         if res.size>0:
@@ -355,9 +336,13 @@ def run_sea(M=10, covariate='pmi', trn_frac = 0.8, n_cells_max=None, n_jobs=10, 
     genes_ros = sc.read_h5ad(ADATA_PRE+'mathys19_pp_filtered_June21.h5ad').var.index.unique()
 
     for celltype in celltypes:
+        score_df = pd.DataFrame()
         print(f'reading {ADATA_PRE}local_{celltype}.h5ad')
         adata = sc.read_h5ad(ADATA_PRE+f'local_{celltype}.h5ad')
-
+        
+        if subsample_frac:
+            sc.pp.subsample(adata, fraction=subsample_frac, random_state=0)
+        
         # adata.var.reset_index(inplace=True)
         adata.var['gene_symbol'] = adata.var.index.map( lambda x: get_hgnc_sym(x))
         adata.var['gene_symbol'] = adata.var['gene_symbol'].astype(str)
@@ -377,12 +362,13 @@ def run_sea(M=10, covariate='pmi', trn_frac = 0.8, n_cells_max=None, n_jobs=10, 
         pmi_map = {'3.2 to 5.9 hours': 3.5, '5.9 to 8.7 hours': 7.5, '8.7 to 11.4 hours': 10.5, 'Reference':float('nan')}
         adata.obs['pmi'] = adata.obs.PMI.map(lambda x: pmi_map[x]).astype('float32')
         adata.obs.drop(columns='PMI', inplace=True)
-        celltype_score = doPLSRegression(adata, [celltype], M=M, optimalMapping = AD_Seattle_optimal_map(), n_cells_max= n_cells_max, n_jobs=n_jobs, pca_max=pca_max, start_idx=start_idx)
+        celltype_score = doPLSRegression(adata, [celltype], M=M, optimalMapping = run.AD_Seattle_optimal_map(), n_cells_max= n_cells_max, n_jobs=n_jobs, pca_max=pca_max, start_idx=start_idx)
         _df = pd.DataFrame.from_dict(celltype_score[celltype])
         _df['celltype'] = celltype
         _df.set_index('id', inplace=True)
         score_df = pd.concat([score_df, _df])
 
-        score_df.to_csv(PATH_DIR + f'AD/Sea/score_df_{start_idx}_to_{M}_{covariate}_pca{pca_max}_bs_execid_{celltype}.csv')
+        score_df.to_csv(PATH_DIR + f'AD/Sea/score_df_{start_idx}_to_{M}_{covariate}_{n_cells_max}_pca{pca_max}_bs_execid_{celltype}.csv')
         del(adata)
+        del(score_df)
         gc.collect()
